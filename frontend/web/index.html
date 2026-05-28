@@ -443,25 +443,101 @@
   .doc-item-status.err { background: rgba(255,76,106,0.1); color: var(--red); }
 
   /* ── Tools ── */
-  .tools-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
-  .tool-card {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 10px; padding: 16px;
-  }
-  .tool-server {
+  .mcp-layout { display: grid; grid-template-columns: 300px 1fr; gap: 16px; min-height: 500px; }
+  .mcp-sidebar { display: flex; flex-direction: column; gap: 6px; }
+  .mcp-server-group { margin-bottom: 4px; }
+  .mcp-server-label {
     font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
-    color: var(--muted); margin-bottom: 8px;
+    color: var(--muted); padding: 4px 10px; margin-bottom: 4px;
+    display: flex; align-items: center; gap: 6px;
   }
-  .tool-name {
-    font-family: var(--font-head); font-size: 13px; font-weight: 700;
-    color: var(--text); margin-bottom: 4px;
+  .mcp-server-label .dot-sm { flex-shrink: 0; }
+  .mcp-tool-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border-radius: 8px;
+    border: 1px solid transparent;
+    cursor: pointer; transition: all 0.15s;
+    background: transparent;
   }
-  .tool-desc { font-size: 11px; color: var(--muted); line-height: 1.4; margin-bottom: 10px; }
-  .tool-schema {
-    font-size: 10px; color: var(--muted);
-    background: rgba(0,0,0,0.3); border-radius: 6px;
-    padding: 8px; font-family: var(--font-mono);
-    white-space: pre-wrap; max-height: 80px; overflow-y: auto;
+  .mcp-tool-item:hover { background: rgba(255,255,255,0.04); border-color: var(--border); }
+  .mcp-tool-item.active {
+    background: rgba(0,212,255,0.07);
+    border-color: rgba(0,212,255,0.3);
+  }
+  .mcp-tool-icon {
+    width: 30px; height: 30px; border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; flex-shrink: 0;
+  }
+  .mcp-tool-info { flex: 1; min-width: 0; }
+  .mcp-tool-name {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+    color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .mcp-tool-srv { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+
+  .mcp-panel {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; overflow: hidden; display: flex; flex-direction: column;
+  }
+  .mcp-panel-header {
+    padding: 16px 20px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: flex-start; gap: 12px;
+  }
+  .mcp-panel-icon {
+    width: 38px; height: 38px; border-radius: 9px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 18px;
+  }
+  .mcp-panel-title { font-family: var(--font-head); font-size: 15px; font-weight: 700; color: var(--text); }
+  .mcp-panel-desc { font-size: 11px; color: var(--muted); margin-top: 2px; line-height: 1.5; }
+  .mcp-panel-body { padding: 20px; flex: 1; overflow-y: auto; }
+  .mcp-panel-empty {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 100%; gap: 10px; color: var(--muted); font-size: 12px;
+  }
+  .mcp-panel-empty-icon { font-size: 32px; opacity: 0.3; }
+
+  .mcp-arg-group { margin-bottom: 14px; }
+  .mcp-arg-label {
+    font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 5px; display: flex; align-items: center; gap: 6px;
+  }
+  .mcp-required-badge {
+    font-size: 8px; background: rgba(255,76,106,0.15); color: var(--red);
+    padding: 1px 5px; border-radius: 3px; text-transform: uppercase; letter-spacing: 1px;
+  }
+  .mcp-arg-desc { font-size: 10px; color: var(--muted); margin-bottom: 6px; line-height: 1.4; }
+  .mcp-arg-input {
+    width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--border2);
+    border-radius: 7px; padding: 9px 12px; color: var(--text);
+    font-family: var(--font-mono); font-size: 12px;
+    transition: border-color 0.15s; resize: vertical; min-height: 38px;
+  }
+  .mcp-arg-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(0,212,255,0.1); }
+  .mcp-run-btn {
+    width: 100%; padding: 11px; border-radius: 8px; border: none;
+    background: var(--accent); color: #000; font-family: var(--font-head);
+    font-size: 13px; font-weight: 700; cursor: pointer;
+    transition: all 0.15s; display: flex; align-items: center; justify-content: center; gap: 8px;
+    margin-top: 16px;
+  }
+  .mcp-run-btn:hover { background: #33ddff; transform: translateY(-1px); }
+  .mcp-run-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+  .mcp-result {
+    margin-top: 16px; border-radius: 8px; overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .mcp-result-header {
+    padding: 8px 12px; font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .mcp-result-header.ok { background: rgba(0,229,160,0.08); color: var(--green); }
+  .mcp-result-header.err { background: rgba(255,76,106,0.08); color: var(--red); }
+  .mcp-result-body {
+    padding: 12px; font-family: var(--font-mono); font-size: 11px;
+    color: var(--text); white-space: pre-wrap; line-height: 1.6;
+    background: rgba(0,0,0,0.25); max-height: 300px; overflow-y: auto;
   }
 
   /* ── Server status ── */
@@ -741,15 +817,22 @@
       <div class="panel" id="panel-tools">
         <div class="section-head">
           <div class="section-title">MCP Инструменты</div>
-          <div class="section-sub">Доступные инструменты по серверам</div>
+          <div class="section-sub">Выбери инструмент слева и запусти его</div>
         </div>
         <div class="servers-row" id="tools-servers-row">
           <div class="server-badge"><div class="dot-sm dot-yellow"></div> Загрузка...</div>
         </div>
-        <div class="tools-grid" id="tools-grid">
-          <div class="empty-state">
-            <div class="empty-state-icon">◈</div>
-            <div class="empty-state-text">Подключись к API чтобы увидеть инструменты</div>
+        <div class="mcp-layout">
+          <div class="mcp-sidebar" id="mcp-tool-list">
+            <div class="empty-state"><div class="spinner"></div></div>
+          </div>
+          <div class="mcp-panel" id="mcp-call-panel">
+            <div class="mcp-panel-body">
+              <div class="mcp-panel-empty">
+                <div class="mcp-panel-empty-icon">◈</div>
+                <span>Выбери инструмент из списка</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1023,7 +1106,7 @@ document.getElementById('gen-btn').addEventListener('click', async () => {
   btn.disabled = true
   btn.textContent = '⟳ Генерация...'
   const preview = document.getElementById('image-preview')
-  preview.innerHTML = '<div class="spinner"></div>'
+  preview.innerHTML = '<div class="image-placeholder" style="display:flex;flex-direction:column;gap:8px;align-items:center"><div class="spinner"></div><span style="font-size:12px;color:var(--muted)">Генерируем, подождите 10-30 сек...</span></div>'
   try {
     const r = await api('/api/image/generate', {
       method: 'POST',
@@ -1035,7 +1118,7 @@ document.getElementById('gen-btn').addEventListener('click', async () => {
       }),
     })
     const data = await r.json()
-    preview.innerHTML = `<img src="${data.url}" alt="generated" onerror="this.parentElement.innerHTML='<div class=\'image-placeholder\'>Ошибка загрузки изображения</div>'">`
+    preview.innerHTML = `<img src="${data.url}" alt="generated" style="max-width:100%;border-radius:12px;display:block">`
     toast('Изображение готово!', 'success')
   } catch (e) {
     preview.innerHTML = `<div class="image-placeholder">⚠ ${e.message}</div>`
@@ -1139,42 +1222,188 @@ document.getElementById('rag-btn').addEventListener('click', async () => {
 })
 
 // ── MCP Tools ─────────────────────────────────────────────────────────────
+const SERVER_META = {
+  fs:  { color: '#00d4ff', bg: 'rgba(0,212,255,0.12)',  icon: '📁', label: 'Filesystem' },
+  pg:  { color: '#7c3aff', bg: 'rgba(124,58,255,0.12)', icon: '🗄', label: 'PostgreSQL'  },
+  api: { color: '#ff8c42', bg: 'rgba(255,140,66,0.12)', icon: '⚡', label: 'API'         },
+}
+
+function getServerMeta(srv) {
+  return SERVER_META[srv] || { color: '#5a7090', bg: 'rgba(90,112,144,0.12)', icon: '◈', label: srv }
+}
+
+function getToolIcon(name) {
+  const n = name.toLowerCase()
+  if (n.includes('read') || n.includes('get') || n.includes('list')) return '📖'
+  if (n.includes('write') || n.includes('create') || n.includes('insert')) return '✏️'
+  if (n.includes('delete') || n.includes('drop') || n.includes('remove')) return '🗑'
+  if (n.includes('search') || n.includes('find') || n.includes('query')) return '🔍'
+  if (n.includes('move') || n.includes('copy')) return '📋'
+  if (n.includes('dir') || n.includes('folder')) return '📂'
+  return '🔧'
+}
+
+let mcpAllTools = {}   // { server: [{name, description, input_schema}] }
+let mcpActiveTool = null
+
 async function loadTools() {
-  const grid = document.getElementById('tools-grid')
+  const list = document.getElementById('mcp-tool-list')
   const sRow = document.getElementById('tools-servers-row')
-  grid.innerHTML = '<div class="empty-state"><div class="spinner"></div></div>'
+  list.innerHTML = '<div class="empty-state"><div class="spinner"></div></div>'
   try {
     const [toolsR, serversR] = await Promise.all([
       api('/api/tools'), api('/api/tools/servers')
     ])
-    const tools = await toolsR.json()
+    mcpAllTools = await toolsR.json()
     const servers = await serversR.json()
 
+    // Server status badges
     sRow.innerHTML = Object.entries(servers).map(([name, info]) => {
       const ok = info.status === 'ok'
-      return `<div class="server-badge"><div class="dot-sm ${ok ? 'dot-green' : 'dot-red'}"></div>
-        <strong>${name}</strong> ${ok ? `· ${info.tools_count} тулз` : '· ' + info.detail}</div>`
+      const m = getServerMeta(name)
+      return `<div class="server-badge" style="border-color:${ok ? m.color+'33' : ''}">
+        <div class="dot-sm ${ok ? 'dot-green' : 'dot-red'}"></div>
+        <strong style="color:${ok ? m.color : 'var(--muted)'}">${m.icon} ${m.label}</strong>
+        <span style="color:var(--muted)">${ok ? info.tools_count + ' инстр.' : 'ошибка'}</span>
+      </div>`
     }).join('')
 
-    const cards = []
-    for (const [server, list] of Object.entries(tools)) {
-      if (Array.isArray(list)) {
-        for (const t of list) {
-          cards.push(`<div class="tool-card">
-            <div class="tool-server">${server}</div>
-            <div class="tool-name">${t.name}</div>
-            <div class="tool-desc">${t.description || '—'}</div>
-            <div class="tool-schema">${JSON.stringify(t.input_schema || {}, null, 2)}</div>
-          </div>`)
-        }
+    // Tool list grouped by server
+    let html = ''
+    let totalTools = 0
+    for (const [srv, toolList] of Object.entries(mcpAllTools)) {
+      if (!Array.isArray(toolList) || toolList.length === 0) continue
+      const m = getServerMeta(srv)
+      html += `<div class="mcp-server-group">
+        <div class="mcp-server-label">
+          <div class="dot-sm" style="background:${m.color}"></div>
+          ${m.label}
+        </div>`
+      for (const t of toolList) {
+        const icon = getToolIcon(t.name)
+        html += `<div class="mcp-tool-item" data-srv="${srv}" data-tool="${t.name}" onclick="selectTool('${srv}','${t.name}')">
+          <div class="mcp-tool-icon" style="background:${m.bg};color:${m.color}">${icon}</div>
+          <div class="mcp-tool-info">
+            <div class="mcp-tool-name">${t.name}</div>
+            <div class="mcp-tool-srv">${m.label}</div>
+          </div>
+        </div>`
+        totalTools++
       }
+      html += '</div>'
     }
-    grid.innerHTML = cards.length ? cards.join('') :
+
+    list.innerHTML = totalTools ? html :
       `<div class="empty-state"><div class="empty-state-icon">◈</div><div class="empty-state-text">Инструменты не найдены</div></div>`
   } catch (e) {
-    grid.innerHTML = `<div class="empty-state"><div class="empty-state-icon">◈</div><div class="empty-state-text">Ошибка: ${e.message}</div></div>`
+    list.innerHTML = `<div class="empty-state"><div class="empty-state-icon">◈</div><div class="empty-state-text">Ошибка: ${e.message}</div></div>`
     toast(e.message, 'error')
   }
+}
+
+function selectTool(srv, toolName) {
+  // Highlight selected
+  document.querySelectorAll('.mcp-tool-item').forEach(el => el.classList.remove('active'))
+  const item = document.querySelector(`.mcp-tool-item[data-srv="${srv}"][data-tool="${toolName}"]`)
+  if (item) item.classList.add('active')
+
+  const toolList = mcpAllTools[srv] || []
+  const tool = toolList.find(t => t.name === toolName)
+  if (!tool) return
+  mcpActiveTool = { srv, tool }
+
+  const m = getServerMeta(srv)
+  const schema = tool.input_schema || {}
+  const props = schema.properties || {}
+  const required = schema.required || []
+
+  let argsHtml = ''
+  if (Object.keys(props).length === 0) {
+    argsHtml = '<p style="font-size:11px;color:var(--muted);margin-bottom:16px">Этот инструмент не требует аргументов</p>'
+  } else {
+    for (const [key, def] of Object.entries(props)) {
+      const isReq = required.includes(key)
+      const isLong = def.type === 'object' || (def.description || '').length > 40
+      const inputTag = isLong ? 'textarea' : 'input'
+      const inputExtra = isLong ? 'rows="3"' : 'type="text"'
+      argsHtml += `<div class="mcp-arg-group">
+        <div class="mcp-arg-label">
+          ${key}
+          ${isReq ? '<span class="mcp-required-badge">required</span>' : ''}
+        </div>
+        ${def.description ? `<div class="mcp-arg-desc">${def.description}</div>` : ''}
+        <${inputTag} class="mcp-arg-input" id="mcp-arg-${key}" data-key="${key}"
+          placeholder="${def.type || 'string'}..." ${inputExtra}></${inputTag}>
+      </div>`
+    }
+  }
+
+  const panel = document.getElementById('mcp-call-panel')
+  panel.innerHTML = `
+    <div class="mcp-panel-header">
+      <div class="mcp-panel-icon" style="background:${m.bg};color:${m.color}">${getToolIcon(toolName)}</div>
+      <div>
+        <div class="mcp-panel-title">${toolName}</div>
+        <div class="mcp-panel-desc">${tool.description || '—'}</div>
+      </div>
+    </div>
+    <div class="mcp-panel-body" id="mcp-panel-body">
+      ${argsHtml}
+      <button class="mcp-run-btn" id="mcp-run-btn" onclick="runTool()">
+        ▶ Запустить
+      </button>
+      <div id="mcp-result"></div>
+    </div>`
+}
+
+async function runTool() {
+  if (!mcpActiveTool) return
+  const { srv, tool } = mcpActiveTool
+  const btn = document.getElementById('mcp-run-btn')
+  btn.disabled = true
+  btn.textContent = '⟳ Выполняется...'
+
+  // Collect arguments
+  const args = {}
+  document.querySelectorAll('.mcp-arg-input').forEach(el => {
+    if (el.value.trim()) {
+      let val = el.value.trim()
+      try { val = JSON.parse(val) } catch {}
+      args[el.dataset.key] = val
+    }
+  })
+
+  const resultEl = document.getElementById('mcp-result')
+  resultEl.innerHTML = ''
+
+  try {
+    const r = await api('/api/tools/call', {
+      method: 'POST',
+      body: JSON.stringify({ server: srv, tool: tool.name, arguments: args })
+    })
+    const data = await r.json()
+    const output = typeof data.result === 'string' ? data.result : JSON.stringify(data.result, null, 2)
+    resultEl.innerHTML = `
+      <div class="mcp-result">
+        <div class="mcp-result-header ok">✓ Результат · ${tool.name}</div>
+        <div class="mcp-result-body">${escapeHtml(output)}</div>
+      </div>`
+    toast('Инструмент выполнен', 'success')
+  } catch (e) {
+    resultEl.innerHTML = `
+      <div class="mcp-result">
+        <div class="mcp-result-header err">✕ Ошибка · ${tool.name}</div>
+        <div class="mcp-result-body">${escapeHtml(e.message)}</div>
+      </div>`
+    toast(e.message, 'error')
+  } finally {
+    btn.disabled = false
+    btn.textContent = '▶ Запустить'
+  }
+}
+
+function escapeHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
 }
 
 // ── Settings ───────────────────────────────────────────────────────────────

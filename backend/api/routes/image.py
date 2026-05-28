@@ -26,7 +26,7 @@ class GenerateRequest(BaseModel):
 
 
 class GenerateResponse(BaseModel):
-    url: str
+    url: str        # data:image/png;base64,... для прямого отображения
     prompt: str
 
 
@@ -38,22 +38,27 @@ class AnalyzeResponse(BaseModel):
 async def generate_image(req: GenerateRequest):
     """Генерация картинки через Pollinations.AI — бесплатно, без токена."""
     encoded = quote(req.prompt)
-    url = (
+    poll_url = (
         f"https://image.pollinations.ai/prompt/{encoded}"
         f"?width={req.width}&height={req.height}&model={req.model}&nologo=true"
     )
 
-    # Проверяем что URL отвечает
+    # Скачиваем картинку на бэкенде и отдаём base64 — браузер не блокирует
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.head(url, follow_redirects=True)
+        async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+            resp = await client.get(poll_url)
             if resp.status_code >= 400:
                 raise HTTPException(status_code=502, detail="Image generation failed")
+            content_type = resp.headers.get("content-type", "image/jpeg").split(";")[0]
+            image_b64 = base64.b64encode(resp.content).decode()
     except httpx.TimeoutException:
         raise HTTPException(status_code=504, detail="Image generation timed out")
 
     logger.info("image_generated", prompt=req.prompt[:50])
-    return GenerateResponse(url=url, prompt=req.prompt)
+    return GenerateResponse(
+        url=f"data:{content_type};base64,{image_b64}",
+        prompt=req.prompt,
+    )
 
 
 @router.post("/analyze", response_model=AnalyzeResponse)
