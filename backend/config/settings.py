@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -43,7 +43,11 @@ class Settings(BaseSettings):
     rate_limit_global_tpm: int = Field(default=6000, ge=100) # Groq TPM
 
     # ── Redis ──────────────────────────────────────────────────────────────
-    redis_url: str = Field(default="redis://localhost:6379/0")
+    redis_url: str = Field(
+        default="redis://localhost:6379/0",
+        validation_alias=AliasChoices("REDIS_URL", "redis_url"),
+        description="Redis connection URL. Populated from REDIS_URL env var on Railway.",
+    )
 
     # ── PostgreSQL ─────────────────────────────────────────────────────────
     database_url: Optional[str] = Field(default=None)
