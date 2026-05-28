@@ -444,7 +444,10 @@
 
   /* ── Tools ── */
   .mcp-layout { display: grid; grid-template-columns: 300px 1fr; gap: 16px; min-height: 500px; }
-  .mcp-sidebar { display: flex; flex-direction: column; gap: 6px; }
+  .mcp-sidebar { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; max-height: 560px; padding-right: 4px; }
+  .mcp-sidebar::-webkit-scrollbar { width: 4px; }
+  .mcp-sidebar::-webkit-scrollbar-track { background: transparent; }
+  .mcp-sidebar::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
   .mcp-server-group { margin-bottom: 4px; }
   .mcp-server-label {
     font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
@@ -1382,11 +1385,24 @@ async function runTool() {
       body: JSON.stringify({ server: srv, tool: tool.name, arguments: args })
     })
     const data = await r.json()
-    const output = typeof data.result === 'string' ? data.result : JSON.stringify(data.result, null, 2)
+    const raw = data.result
+    let rendered = ''
+    // Try to detect and render nicely
+    if (typeof raw === 'string') {
+      // Try JSON parse for pretty print
+      try {
+        const parsed = JSON.parse(raw)
+        rendered = renderMcpValue(parsed)
+      } catch {
+        rendered = renderMcpValue(raw)
+      }
+    } else {
+      rendered = renderMcpValue(raw)
+    }
     resultEl.innerHTML = `
       <div class="mcp-result">
         <div class="mcp-result-header ok">✓ Результат · ${tool.name}</div>
-        <div class="mcp-result-body">${escapeHtml(output)}</div>
+        <div class="mcp-result-body">${rendered}</div>
       </div>`
     toast('Инструмент выполнен', 'success')
   } catch (e) {
@@ -1404,6 +1420,53 @@ async function runTool() {
 
 function escapeHtml(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+}
+
+function renderMcpValue(val) {
+  if (val === null || val === undefined) return '<span style="color:var(--muted)">null</span>'
+  if (typeof val === 'boolean') return `<span style="color:var(--accent)">${val}</span>`
+  if (typeof val === 'number') return `<span style="color:var(--yellow)">${val}</span>`
+  if (typeof val === 'string') {
+    // Multi-line text → plain block
+    if (val.includes('\n') || val.length < 300) {
+      return escapeHtml(val)
+    }
+    return escapeHtml(val)
+  }
+  if (Array.isArray(val)) {
+    if (val.length === 0) return '<span style="color:var(--muted)">[]</span>'
+    // Array of simple strings/numbers → list
+    if (val.every(v => typeof v !== 'object')) {
+      return val.map((v,i) =>
+        `<div style="padding:2px 0;border-bottom:1px solid rgba(255,255,255,0.04)">`+
+        `<span style="color:var(--muted);margin-right:8px">${i+1}.</span>${escapeHtml(String(v))}</div>`
+      ).join('')
+    }
+    // Array of objects → table if uniform keys
+    const keys = [...new Set(val.flatMap(v => typeof v === 'object' && v ? Object.keys(v) : []))]
+    if (keys.length > 0 && val.length > 0) {
+      const th = keys.map(k => `<th style="padding:5px 10px;color:var(--muted);font-weight:500;text-align:left;border-bottom:1px solid var(--border2);white-space:nowrap">${escapeHtml(k)}</th>`).join('')
+      const rows = val.map(row => {
+        const cells = keys.map(k => {
+          const v = row && row[k]
+          return `<td style="padding:5px 10px;border-bottom:1px solid rgba(255,255,255,0.03);color:var(--text)">${escapeHtml(v==null?'—':String(v))}</td>`
+        }).join('')
+        return `<tr>${cells}</tr>`
+      }).join('')
+      return `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr>${th}</tr></thead><tbody>${rows}</tbody></table></div>`
+    }
+    return `<pre style="white-space:pre-wrap">${escapeHtml(JSON.stringify(val, null, 2))}</pre>`
+  }
+  if (typeof val === 'object') {
+    const entries = Object.entries(val)
+    if (entries.length === 0) return '<span style="color:var(--muted)">{}</span>'
+    return entries.map(([k, v]) =>
+      `<div style="display:flex;gap:10px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04)">`+
+      `<span style="color:var(--muted);font-size:10px;letter-spacing:1px;text-transform:uppercase;min-width:100px;flex-shrink:0;padding-top:1px">${escapeHtml(k)}</span>`+
+      `<span style="color:var(--text);word-break:break-all">${renderMcpValue(v)}</span></div>`
+    ).join('')
+  }
+  return escapeHtml(String(val))
 }
 
 // ── Settings ───────────────────────────────────────────────────────────────

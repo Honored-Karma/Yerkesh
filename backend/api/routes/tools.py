@@ -4,6 +4,7 @@ POST /api/tools/call     — вызов конкретного инструме�
 GET  /api/tools/servers  — статус MCP-серверов
 """
 from __future__ import annotations
+import json
 
 from typing import Any, Dict, Optional
 
@@ -76,14 +77,28 @@ async def call_tool(req: ToolCallRequest):
         )
     try:
         result = await client.call_tool(req.tool, req.arguments)
-        content = result.content if hasattr(result, "content") else result
-        # Сериализуем content в читаемый вид
-        if isinstance(content, list):
-            text = "\n".join(
-                c.text if hasattr(c, "text") else str(c) for c in content
-            )
+        # result — dict {"content": [{"type":"text","text":"..."}], "isError": bool}
+        # или объект с атрибутом .content
+        if isinstance(result, dict):
+            content_list = result.get("content", [])
+            if isinstance(content_list, list) and content_list:
+                parts = []
+                for c in content_list:
+                    if isinstance(c, dict):
+                        parts.append(c.get("text", json.dumps(c, ensure_ascii=False)))
+                    else:
+                        parts.append(str(c))
+                text = "\n".join(parts)
+            else:
+                text = json.dumps(result, ensure_ascii=False, indent=2)
+        elif hasattr(result, "content"):
+            raw = result.content
+            if isinstance(raw, list):
+                text = "\n".join(c.text if hasattr(c, "text") else str(c) for c in raw)
+            else:
+                text = str(raw)
         else:
-            text = str(content)
+            text = str(result)
         logger.info("tool_called", server=req.server, tool=req.tool)
         return ToolCallResponse(result=text, server=req.server, tool=req.tool)
     except Exception as exc:
