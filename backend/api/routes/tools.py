@@ -33,7 +33,7 @@ class ToolCallResponse(BaseModel):
 async def list_tools():
     """Список всех доступных инструментов по серверам."""
     result = {}
-    for name, client in mcp_aggregator._clients.items():
+    for name, client in mcp_aggregator._servers.items():
         try:
             tools = await client.list_tools()
             result[name] = [
@@ -53,7 +53,7 @@ async def list_tools():
 async def list_servers():
     """Статус каждого MCP-сервера."""
     statuses = {}
-    for name, client in mcp_aggregator._clients.items():
+    for name, client in mcp_aggregator._servers.items():
         try:
             tools = await client.list_tools()
             count = len(tools.tools if hasattr(tools, "tools") else tools)
@@ -66,12 +66,12 @@ async def list_servers():
 @router.post("/call", response_model=ToolCallResponse)
 async def call_tool(req: ToolCallRequest):
     """Вызов MCP-инструмента напрямую."""
-    client = mcp_aggregator._clients.get(req.server)
+    client = mcp_aggregator._servers.get(req.server)
     if not client:
         raise HTTPException(
             status_code=404,
             detail=f"MCP server '{req.server}' not found. "
-                   f"Available: {list(mcp_aggregator._clients.keys())}",
+                   f"Available: {list(mcp_aggregator._servers.keys())}",
         )
     try:
         result = await client.call_tool(req.tool, req.arguments)

@@ -85,7 +85,12 @@ async def chat_stream(req: ChatRequest):
     """Стриминг через SSE — каждый чанк отправляется сразу."""
 
     async def event_generator() -> AsyncGenerator[str, None]:
-        history = await context_store.get_history(_session_to_id(req.session_id))
+        try:
+            history = await context_store.get_history(_session_to_id(req.session_id))
+        except Exception as exc:
+            logger.exception("stream_context_load_error", error=str(exc))
+            history = []
+
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
         messages += history
         messages.append({"role": "user", "content": req.message})
@@ -115,12 +120,16 @@ async def chat_stream(req: ChatRequest):
                         data = json.dumps({"delta": delta}, ensure_ascii=False)
                         yield f"data: {data}\n\n"
         except Exception as exc:
+            logger.exception("stream_groq_error", error=str(exc))
             yield f"data: {json.dumps({'error': str(exc)})}\n\n"
             return
 
         # Сохраняем историю после стрима
-        await context_store.add_message(_session_to_id(req.session_id), "user", req.message)
-        await context_store.add_message(_session_to_id(req.session_id), "assistant", full_text)
+        try:
+            await context_store.add_message(_session_to_id(req.session_id), "user", req.message)
+            await context_store.add_message(_session_to_id(req.session_id), "assistant", full_text)
+        except Exception as exc:
+            logger.exception("stream_context_save_error", error=str(exc))
         yield f"data: {json.dumps({'done': True})}\n\n"
 
     return StreamingResponse(
