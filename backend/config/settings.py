@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from pydantic import AliasChoices, Field, field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     # ── Redis ──────────────────────────────────────────────────────────────
     redis_url: str = Field(
         default="redis://localhost:6379/0",
-        validation_alias=AliasChoices("REDIS_URL", "redis_url"),
+        alias="REDIS_URL",
         description="Redis connection URL. Populated from REDIS_URL env var on Railway.",
     )
 
