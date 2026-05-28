@@ -36,13 +36,14 @@ async def list_tools():
     for name, client in mcp_aggregator._servers.items():
         try:
             tools = await client.list_tools()
+            tool_list = tools.tools if hasattr(tools, "tools") else tools
             result[name] = [
                 {
-                    "name": t.name,
-                    "description": t.description,
-                    "input_schema": t.inputSchema,
+                    "name": t["name"] if isinstance(t, dict) else t.name,
+                    "description": (t.get("description", "") if isinstance(t, dict) else t.description) or "",
+                    "input_schema": (t.get("inputSchema") or t.get("input_schema", {})) if isinstance(t, dict) else (t.inputSchema or {}),
                 }
-                for t in (tools.tools if hasattr(tools, "tools") else tools)
+                for t in tool_list
             ]
         except Exception as exc:
             result[name] = {"error": str(exc)}
