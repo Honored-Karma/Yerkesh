@@ -1,0 +1,318 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Run full LLM-judge test weekly on Monday 03:00 UTC
+    - cron: '0 3 * * 1'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/telegram-bot
+  PYTHON_VERSION: "3.12"
+
+jobs:
+
+  # ── Stage 1: Lint & Type Check ───────────────────────────────────────────────
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install lint tools
+        run: pip install ruff mypy pydantic-settings types-redis types-requests
+
+      - name: Run ruff (linter + formatter check)
+        run: |
+          ruff check backend/ frontend/ --select=E,W,F,I,N,UP,S,B,A,C4,T20 --ignore=S101,S603,S607
+          ruff format --check backend/ frontend/
+
+      - name: Run mypy (strict type checking)
+        run: |
+          mypy backend/config/ backend/services/ backend/utils/ --strict \
+            --ignore-missing-imports \
+            --allow-untyped-calls \
+            --no-warn-return-any
+        continue-on-error: true
+
+  # ── Stage 2: Security Scan ───────────────────────────────────────────────────
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install security tools
+        run: pip install bandit safety
+
+      - name: Run bandit (Python security linter)
+        run: |
+          bandit -r backend/ frontend/ \
+            --exclude backend/tests,docker \
+            --skip B101,B603,B607,B104 \
+            -ll
+
+      - name: Run safety (dependency vulnerability check)
+        run: safety check -r backend/requirements.txt --ignore=70612
+        continue-on-error: true
+
+  # ── Stage 3: Unit & Integration Tests ────────────────────────────────────────
+  test:
+    name: Tests (unit + integration + property-based)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      redis:
+        image: redis:7.2-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install pytest pytest-asyncio pytest-mock pytest-cov \
+                      pytest-socket aioresponses hypothesis
+
+      - name: Create test .env
+        run: |
+          echo "BOT_TOKEN=123456789:AABBCCDDEEFFaabbccddeeff-test_token" > .env
+          echo "GROQ_API_KEY=gsk_test_fake_key_for_unit_tests_only" >> .env
+          echo "REDIS_URL=redis://localhost:6379/0" >> .env
+
+      - name: Run unit + integration + property-based tests (skip slow LLM-judge)
+        run: |
+          cd backend && pytest tests/ \
+            -m "not slow" \
+            --cov=handlers --cov=services --cov=utils --cov=config \
+            --cov-report=xml \
+            --cov-fail-under=80 \
+            -v
+        env:
+          REDIS_URL: redis://localhost:6379/0
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./backend/coverage.xml
+          fail_ci_if_error: false
+
+  # ── Stage 3b: LLM-as-a-judge regression test (Задача 27) ─────────────────────
+  llm-judge:
+    name: LLM Quality Regression Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install pytest pytest-asyncio
+
+      - name: Create .env
+        run: |
+          echo "BOT_TOKEN=123456789:AABBCCDDEEFFaabbccddeeff-test_token" > .env
+          echo "GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}" >> .env
+
+      - name: Run LLM judge tests (10 questions — fast CI subset)
+        run: |
+          cd backend && pytest tests/test_llm_judge.py \
+            -m "slow" \
+            -v -s \
+            --tb=short
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+
+  # ── Stage 4: Build Docker Image ──────────────────────────────────────────────
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [lint, test]
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tags }}
+      image_digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=,format=short
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Stage 5: Trivy Image Security Scan ──────────────────────────────────────
+  trivy:
+    name: Trivy Image Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [build]
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+        continue-on-error: true
+
+      - name: Upload Trivy results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+
+  # ── Stage 6: Deploy to Staging via SSH ───────────────────────────────────────
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [build, trivy]
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    environment:
+      name: staging
+      url: https://staging.yourdomain.com
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to staging via SSH
+        uses: appleboy/ssh-action@v1.1.0
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            cd /opt/telegram-bot
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            export IMAGE_TAG=${{ github.sha }}
+            docker compose up -d --no-deps bot
+            docker image prune -f
+
+      - name: Smoke test staging (Задача 30)
+        run: |
+          sleep 15
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            https://staging.yourdomain.com/health)
+          if [ "$STATUS" != "200" ]; then
+            echo "❌ Smoke test failed: HTTP $STATUS"
+            exit 1
+          fi
+          echo "✅ Smoke test passed: /health returned 200"
+
+  # ── Stage 7: Deploy to Production via Ansible ────────────────────────────────
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [deploy-staging]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment:
+      name: production
+      url: https://yourdomain.com
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to production via Ansible
+        uses: dawidd6/action-ansible-playbook@v2
+        with:
+          playbook: deploy/ansible/deploy.yml
+          directory: .
+          key: ${{ secrets.PROD_SSH_KEY }}
+          options: |
+            --inventory deploy/ansible/inventory/production
+            --extra-vars "image_tag=${{ github.sha }} github_token=${{ secrets.GITHUB_TOKEN }} github_actor=${{ github.actor }}"
+        continue-on-error: false
+
+      - name: Production smoke test (Задача 30)
+        run: |
+          sleep 20
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            https://yourdomain.com/health)
+          if [ "$STATUS" != "200" ]; then
+            echo "❌ Production smoke test FAILED: HTTP $STATUS"
+            curl -X POST ${{ secrets.ROLLBACK_WEBHOOK_URL }} || true
+            exit 1
+          fi
+          echo "✅ Production smoke test passed"
+
+      - name: Notify on success
+        if: success()
+        run: echo "🚀 Deployed commit ${{ github.sha }} to production"

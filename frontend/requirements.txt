@@ -1,0 +1,4 @@
+# frontend/ зависит от тех же пакетов что и backend/.
+# Устанавливайте из корня проекта: pip install -r backend/requirements.txt
+# Этот файл — для явного документирования зависимостей фронтенд-слоя.
+-r ../backend/requirements.txt

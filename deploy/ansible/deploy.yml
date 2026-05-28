@@ -1,0 +1,71 @@
+---
+# Задача 30 — Ansible деплой на staging/production
+# Использование:
+#   ansible-playbook deploy.yml -i inventory/production \
+#     --extra-vars "image_tag=abc123"
+- name: Deploy Telegram Bot
+  hosts: all
+  become: yes
+  vars:
+    app_dir: /opt/telegram-bot
+    registry: ghcr.io
+    image_name: "{{ lookup('env', 'IMAGE_NAME') | default('yourorg/telegram-bot') }}"
+
+  tasks:
+    - name: Ensure app directory exists
+      file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: deploy
+        group: deploy
+        mode: "0755"
+
+    - name: Copy docker-compose.yml
+      copy:
+        src: ../../docker-compose.yml
+        dest: "{{ app_dir }}/docker-compose.yml"
+        owner: deploy
+        mode: "0644"
+
+    - name: Login to container registry
+      shell: |
+        echo "{{ github_token | default('') }}" | \
+          docker login {{ registry }} -u {{ github_actor | default('ci') }} --password-stdin
+      no_log: true
+
+    - name: Pull new Docker image
+      shell: docker pull {{ registry }}/{{ image_name }}:{{ image_tag }}
+
+    - name: Stop old bot container (graceful)
+      shell: cd {{ app_dir }} && docker compose stop bot || true
+
+    - name: Start new bot container
+      shell: |
+        cd {{ app_dir }}
+        IMAGE_TAG={{ image_tag }} docker compose up -d --no-deps bot
+
+    - name: Wait for bot to be healthy
+      shell: |
+        for i in $(seq 1 12); do
+          STATUS=$(docker inspect --format='{{.State.Health.Status}}' telegram_bot 2>/dev/null || echo "unknown")
+          if [ "$STATUS" = "healthy" ]; then
+            echo "Bot is healthy"; exit 0
+          fi
+          echo "Waiting... ($i/12) status=$STATUS"
+          sleep 5
+        done
+        echo "Bot did not become healthy in time"
+        exit 1
+
+    - name: Prune old Docker images
+      shell: docker image prune -f
+
+    - name: Verify deployment
+      uri:
+        url: "https://{{ inventory_hostname }}/health"
+        method: GET
+        status_code: 200
+        timeout: 10
+      register: health_check
+      retries: 3
+      delay: 5
