@@ -25,7 +25,12 @@ class SearchService:
         self._redis: Optional[aioredis.Redis] = None
 
     async def init(self) -> None:
-        self._redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+        try:
+            self._redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+            await self._redis.ping()
+        except Exception as exc:
+            logger.warning("redis_unavailable_search_cache_disabled", error=str(exc))
+            self._redis = None
 
     async def close(self) -> None:
         if self._redis:

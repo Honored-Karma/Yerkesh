@@ -42,10 +42,14 @@ class ContextStore:
 
     async def init(self) -> None:
         # Redis
-        self._redis = aioredis.from_url(
-            settings.redis_url, decode_responses=True
-        )
-
+        try:
+            self._redis = aioredis.from_url(
+                settings.redis_url, decode_responses=True
+            )
+            await self._redis.ping()
+        except Exception as exc:
+            logger.warning("redis_unavailable_context_store_in_memory", error=str(exc))
+            self._redis = None
         # PostgreSQL
         if settings.database_url:
             try:

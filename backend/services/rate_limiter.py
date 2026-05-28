@@ -101,11 +101,17 @@ class RateLimiter:
         self._bucket: Optional[TokenBucket] = None
 
     async def init(self) -> None:
-        self._redis = aioredis.from_url(
-            settings.redis_url, decode_responses=True
-        )
-        self._bucket = TokenBucket(self._redis)
-        logger.info("rate_limiter_ready", redis_url=settings.redis_url)
+        try:
+            self._redis = aioredis.from_url(
+                settings.redis_url, decode_responses=True
+            )
+            await self._redis.ping()
+            self._bucket = TokenBucket(self._redis)
+            logger.info("rate_limiter_ready", redis_url=settings.redis_url)
+        except Exception as exc:
+            logger.warning("redis_unavailable_rate_limiter_disabled", error=str(exc))
+            self._redis = None
+            self._bucket = None
 
     async def close(self) -> None:
         if self._redis:

@@ -11,6 +11,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes import agents, chat, documents, image, tools
+from handlers.mcp_handler import mcp_aggregator
+from handlers.setup_mcp import setup_mcp
 from services import context_store, gcal_service, rag_service, rate_limiter, search_service
 from utils.logging import setup_logging
 from utils.tracing import setup_tracing
@@ -26,12 +28,14 @@ async def lifespan(app: FastAPI):
     await rag_service.init()
     await search_service.init()
     await gcal_service.init()
+    await setup_mcp()           # ← инициализация MCP агрегатора
     yield
     await rate_limiter.close()
     await context_store.close()
     await rag_service.close()
     await search_service.close()
     await gcal_service.close()
+    await mcp_aggregator.stop_all()  # ← graceful shutdown MCP
 
 
 app = FastAPI(
@@ -44,12 +48,8 @@ app = FastAPI(
 # CORS — разрешаем Vercel и локальный dev
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "https://practice-yerko.vercel.app",  # ← точный URL твоего Vercel
-    ],
-    allow_credentials=True,
+    allow_origins=["*"],          # ← открываем для всех; сузь до конкретного домена в проде
+    allow_credentials=False,      # ← с allow_origins=["*"] credentials должны быть False
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -43,7 +43,11 @@ class Settings(BaseSettings):
     rate_limit_global_tpm: int = Field(default=6000, ge=100) # Groq TPM
 
     # ── Redis ──────────────────────────────────────────────────────────────
-    redis_url: str = Field(default="redis://localhost:6379/0")
+    redis_url: str = Field(
+        default="redis://localhost:6379/0",
+        alias="REDIS_URL",
+        description="Redis connection URL. Populated from REDIS_URL env var on Railway.",
+    )
 
     # ── PostgreSQL ─────────────────────────────────────────────────────────
     database_url: Optional[str] = Field(default=None)
