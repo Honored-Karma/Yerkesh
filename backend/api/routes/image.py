@@ -1,14 +1,16 @@
 """
 POST /api/image/generate — генерация изображения через Pollinations.AI (бесплатно)
+GET  /api/image/proxy    — прокси для загрузки картинки (избегает CORS и base64 overhead)
 POST /api/image/analyze  — анализ загруженного изображения через Groq Vision
 """
 from __future__ import annotations
 
 import base64
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 import httpx
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, UploadFile, File, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from config.settings import settings
@@ -26,7 +28,7 @@ class GenerateRequest(BaseModel):
 
 
 class GenerateResponse(BaseModel):
-    url: str        # data:image/png;base64,... для прямого отображения
+    url: str      # /api/image/proxy?url=... — прокси URL для <img src>
     prompt: str
 
 
@@ -36,29 +38,53 @@ class AnalyzeResponse(BaseModel):
 
 @router.post("/generate", response_model=GenerateResponse)
 async def generate_image(req: GenerateRequest):
-    """Генерация картинки через Pollinations.AI — бесплатно, без токена."""
+    """Генерация картинки через Pollinations.AI — возвращает прокси URL."""
     encoded = quote(req.prompt)
     poll_url = (
         f"https://image.pollinations.ai/prompt/{encoded}"
         f"?width={req.width}&height={req.height}&model={req.model}&nologo=true"
     )
 
-    # Скачиваем картинку на бэкенде и отдаём base64 — браузер не блокирует
+    # Проверяем что Pollinations ответит картинкой (HEAD с увеличенным таймаутом)
     try:
-        async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
-            resp = await client.get(poll_url)
+        async with httpx.AsyncClient(timeout=90, follow_redirects=True) as client:
+            resp = await client.head(poll_url)
+            ct = resp.headers.get("content-type", "")
             if resp.status_code >= 400:
-                raise HTTPException(status_code=502, detail="Image generation failed")
-            content_type = resp.headers.get("content-type", "image/jpeg").split(";")[0]
-            image_b64 = base64.b64encode(resp.content).decode()
+                raise HTTPException(status_code=502, detail=f"Pollinations error: {resp.status_code}")
+            if ct and not ct.startswith("image/"):
+                raise HTTPException(status_code=502, detail=f"Unexpected content type: {ct}")
     except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail="Image generation timed out")
+        raise HTTPException(status_code=504, detail="Pollinations не ответил за 90 секунд")
 
     logger.info("image_generated", prompt=req.prompt[:50])
-    return GenerateResponse(
-        url=f"data:{content_type};base64,{image_b64}",
-        prompt=req.prompt,
-    )
+    # Возвращаем прокси URL — браузер загрузит через наш бэкенд (нет CORS)
+    proxy_url = f"/api/image/proxy?url={quote(poll_url, safe='')}"
+    return GenerateResponse(url=proxy_url, prompt=req.prompt)
+
+
+@router.get("/proxy")
+async def proxy_image(url: str = Query(...)):
+    """Прокси: скачивает картинку с Pollinations и стримит её клиенту."""
+    decoded = unquote(url)
+    # Разрешаем только Pollinations
+    if "pollinations.ai" not in decoded:
+        raise HTTPException(status_code=403, detail="Only pollinations.ai URLs allowed")
+    try:
+        async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
+            resp = await client.get(decoded)
+            if resp.status_code >= 400:
+                raise HTTPException(status_code=502, detail="Image fetch failed")
+            ct = resp.headers.get("content-type", "image/jpeg")
+            if not ct.startswith("image/"):
+                raise HTTPException(status_code=502, detail=f"Not an image: {ct}")
+        return StreamingResponse(
+            iter([resp.content]),
+            media_type=ct,
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Image download timed out")
 
 
 @router.post("/analyze", response_model=AnalyzeResponse)

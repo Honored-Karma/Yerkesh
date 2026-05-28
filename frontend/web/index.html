@@ -1121,7 +1121,15 @@ document.getElementById('gen-btn').addEventListener('click', async () => {
       }),
     })
     const data = await r.json()
-    preview.innerHTML = `<img src="${data.url}" alt="generated" style="max-width:100%;border-radius:12px;display:block">`
+    // data.url is a relative proxy path, prepend API_URL
+    const imgSrc = data.url.startsWith('/') ? API_URL + data.url : data.url
+    preview.innerHTML = ''
+    const img = new Image()
+    img.style.cssText = 'max-width:100%;border-radius:12px;display:block'
+    img.alt = 'generated'
+    img.onload = () => { preview.innerHTML = ''; preview.appendChild(img) }
+    img.onerror = () => { preview.innerHTML = '<div class="image-placeholder">⚠ Не удалось загрузить изображение</div>' }
+    img.src = imgSrc
     toast('Изображение готово!', 'success')
   } catch (e) {
     preview.innerHTML = `<div class="image-placeholder">⚠ ${e.message}</div>`
