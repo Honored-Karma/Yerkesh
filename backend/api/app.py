@@ -47,9 +47,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://localhost:5173",
-        "https://*.vercel.app",
-        # Добавь свой домен когда будет готов:
-        # "https://your-site.vercel.app",
+        "https://practice-yerko.vercel.app",  # ← точный URL твоего Vercel
     ],
     allow_credentials=True,
     allow_methods=["*"],
