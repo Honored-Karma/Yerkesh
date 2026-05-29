@@ -7,10 +7,11 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 
-from api.routes import agents, chat, documents, image, tools
+from api.routes import agents, calendar, chat, documents, image, tools
 from handlers.mcp_handler import mcp_aggregator
 from handlers.setup_mcp import setup_mcp
 from services import context_store, gcal_service, rag_service, rate_limiter, search_service
@@ -57,9 +58,43 @@ app.add_middleware(
 # Роуты
 app.include_router(chat.router,      prefix="/api/chat",      tags=["Chat"])
 app.include_router(agents.router,    prefix="/api/agents",    tags=["Agents"])
+app.include_router(calendar.router,  prefix="/api/calendar",  tags=["Calendar"])
 app.include_router(image.router,     prefix="/api/image",     tags=["Image"])
 app.include_router(tools.router,     prefix="/api/tools",     tags=["MCP Tools"])
 app.include_router(documents.router, prefix="/api/documents", tags=["Documents"])
+
+
+@app.get("/oauth/callback", response_class=HTMLResponse)
+async def oauth_callback(
+    code: str | None = Query(None),
+    state: str | None = Query(None),
+):
+    """OAuth2 callback для Google Calendar (веб и Telegram используют один redirect URI)."""
+    if not code or not state:
+        return HTMLResponse(
+            "<h2>❌ Ошибка: отсутствуют параметры code или state.</h2>",
+            status_code=400,
+        )
+    try:
+        user_id = int(state)
+    except ValueError:
+        return HTMLResponse("<h2>❌ Ошибка: некорректный state.</h2>", status_code=400)
+
+    success = await gcal_service.exchange_code(user_id, code)
+    if success:
+        return HTMLResponse(
+            "<html><body style='font-family:sans-serif;text-align:center;margin-top:80px'>"
+            "<h2>✅ Google Calendar подключён!</h2>"
+            "<p>Можете вернуться на сайт и создавать события через агента «Календарь».</p>"
+            "</body></html>"
+        )
+    return HTMLResponse(
+        "<html><body style='font-family:sans-serif;text-align:center;margin-top:80px'>"
+        "<h2>❌ Ошибка авторизации</h2>"
+        "<p>Попробуйте подключить календарь снова.</p>"
+        "</body></html>",
+        status_code=500,
+    )
 
 
 @app.get("/health")

@@ -12,46 +12,17 @@ LLM извлекает дату/время из сообщения и созда
 """
 from __future__ import annotations
 
-import json
-from datetime import datetime
-
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from config.settings import settings
+from services.calendar_events import TIMEZONE, try_create_event_from_text
 from services.google_calendar_service import gcal_service
-from services.groq_service import groq_service
 from utils.logging import get_logger
 
 logger = get_logger(__name__)
 router = Router(name="calendar")
-
-TIMEZONE = "Asia/Almaty"
-
-EXTRACT_EVENT_TOOL = {
-    "type": "function",
-    "function": {
-        "name": "create_calendar_event",
-        "description": "Extract event details from user message to create a calendar event",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "summary": {"type": "string", "description": "Event title"},
-                "start_datetime": {
-                    "type": "string",
-                    "description": "ISO 8601 start datetime WITHOUT timezone offset, e.g. '2024-11-01T14:00:00'",
-                },
-                "end_datetime": {
-                    "type": "string",
-                    "description": "ISO 8601 end datetime WITHOUT timezone offset (1 hour after start if not specified)",
-                },
-                "description": {"type": "string", "description": "Event description"},
-            },
-            "required": ["summary", "start_datetime", "end_datetime"],
-        },
-    },
-}
 
 
 @router.message(Command("calendar"))
@@ -96,67 +67,20 @@ async def try_create_event_from_message(message: Message) -> bool:
     Returns True if event was created.
     """
     uid = message.from_user.id
-    if not await gcal_service.is_connected(uid):
+    result = await try_create_event_from_text(uid, message.text or "")
+    if not result:
+        return False
+    if result.get("error") == "create_failed":
+        await message.answer(
+            "❌ Не удалось создать событие. Попробуйте переподключить календарь через /calendar."
+        )
         return False
 
-    calendar_keywords = ["встреч", "запланируй", "назначь", "событие", "remind", "meeting", "созвон"]
-    text_lower = (message.text or "").lower()
-    if not any(kw in text_lower for kw in calendar_keywords):
-        return False
-
-    try:
-        now_str = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-        resp = await groq_service.client.chat.completions.create(
-            model=settings.groq_model_fast,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        f"Current datetime: {now_str} (timezone: {TIMEZONE}). "
-                        "Extract calendar event details from the user message. "
-                        "Return datetime in ISO 8601 format WITHOUT timezone offset (e.g. 2024-11-01T14:00:00)."
-                    ),
-                },
-                {"role": "user", "content": message.text},
-            ],
-            tools=[EXTRACT_EVENT_TOOL],
-            tool_choice={"type": "function", "function": {"name": "create_calendar_event"}},
-        )
-
-        # ИСПРАВЛЕНИЕ 1: защита от None/пустого tool_calls
-        choice = resp.choices[0].message
-        if not choice.tool_calls:
-            logger.warning("gcal_no_tool_call", user_id=uid, text=message.text[:100])
-            return False
-
-        tool_call = choice.tool_calls[0]
-        args = json.loads(tool_call.function.arguments)
-        logger.info("gcal_extracted_event", user_id=uid, args=args)
-
-        event_url = await gcal_service.create_event(
-            uid,
-            summary=args["summary"],
-            start_datetime=args["start_datetime"],
-            end_datetime=args["end_datetime"],
-            description=args.get("description", ""),
-            timezone=TIMEZONE,
-        )
-
-        if event_url:
-            start_display = args["start_datetime"][:16].replace("T", " ")
-            await message.answer(
-                f"📅 Событие создано: <b>{args['summary']}</b>\n"
-                f"🕐 {start_display} ({TIMEZONE})\n"
-                f"🔗 <a href='{event_url}'>Открыть в Calendar</a>",
-                parse_mode="HTML",
-            )
-            return True
-        else:
-            await message.answer(
-                "❌ Не удалось создать событие. Попробуйте переподключить календарь через /calendar."
-            )
-
-    except Exception as exc:
-        logger.warning("calendar_event_extract_failed", error=str(exc))
-
-    return False
+    start_display = result["start_datetime"][:16].replace("T", " ")
+    await message.answer(
+        f"📅 Событие создано: <b>{result['summary']}</b>\n"
+        f"🕐 {start_display} ({TIMEZONE})\n"
+        f"🔗 <a href='{result['event_url']}'>Открыть в Calendar</a>",
+        parse_mode="HTML",
+    )
+    return True

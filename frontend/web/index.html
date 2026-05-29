@@ -736,6 +736,7 @@
 
       <!-- ── Chat ── -->
       <div class="panel" id="panel-chat">
+        <div id="calendar-banner" class="api-setup-banner hidden" role="status"></div>
         <div class="agent-bar" id="agent-bar">
           <!-- заполняется из /api/agents -->
         </div>
@@ -878,7 +879,15 @@
           <div class="form-group">
             <label class="form-label">Session ID</label>
             <input class="form-input" id="settings-session" value="web-default">
-            <div style="font-size:10px; color:var(--muted); margin-top:4px">Уникальный ID для хранения истории диалога</div>
+            <div style="font-size:10px; color:var(--muted); margin-top:4px">Уникальный ID для хранения истории диалога и OAuth календаря</div>
+          </div>
+          <div class="form-group" id="calendar-settings-block">
+            <label class="form-label">Google Calendar</label>
+            <div id="calendar-settings-status" style="font-size:12px;color:var(--muted);margin-bottom:8px">—</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-primary" type="button" id="calendar-connect-btn">Подключить Google</button>
+              <button class="btn btn-ghost" type="button" id="calendar-disconnect-btn">Отключить</button>
+            </div>
           </div>
           <div style="display:flex; gap:8px; margin-top:4px">
             <button class="btn btn-primary" id="save-settings-btn">Сохранить</button>
@@ -976,6 +985,8 @@ function navigate(id) {
 
   if (id === 'tools') loadTools()
   if (id === 'dashboard') loadServers()
+  if (id === 'settings') refreshCalendarSettings()
+  if (id === 'chat') updateCalendarBanner()
 }
 
 document.querySelectorAll('.nav-item').forEach(el => {
@@ -1071,10 +1082,70 @@ async function loadAgents() {
         currentAgent = el.dataset.agent
         bar.querySelectorAll('.agent-chip').forEach(c => c.classList.remove('selected'))
         el.classList.add('selected')
+        updateCalendarBanner()
       })
     })
+    updateCalendarBanner()
   } catch {
     bar.innerHTML = `<div class="agent-chip selected" data-agent="default">🤖 Основной</div>`
+  }
+}
+
+async function updateCalendarBanner() {
+  const banner = document.getElementById('calendar-banner')
+  if (!banner) return
+  if (currentAgent !== 'calendar') {
+    banner.classList.add('hidden')
+    return
+  }
+  if (!API_URL) {
+    banner.classList.remove('hidden')
+    banner.innerHTML = '<strong>Календарь.</strong> Сначала укажите URL бэкенда в <a href="#" data-goto="settings">Настройках</a>.'
+    return
+  }
+  try {
+    const r = await api(`/api/calendar/status?session_id=${encodeURIComponent(SESSION_ID)}`)
+    const st = await r.json()
+    if (!st.configured) {
+      banner.classList.remove('hidden')
+      banner.innerHTML = '<strong>Календарь не настроен на сервере</strong> (GOOGLE_CLIENT_ID).'
+      return
+    }
+    if (st.connected) {
+      banner.classList.add('hidden')
+      return
+    }
+    const authR = await api(`/api/calendar/auth-url?session_id=${encodeURIComponent(SESSION_ID)}`)
+    const { auth_url } = await authR.json()
+    banner.classList.remove('hidden')
+    banner.innerHTML =
+      '<strong>Google Calendar не подключён.</strong> ' +
+      `<a href="${auth_url}" target="_blank" rel="noopener">Войти через Google</a> ` +
+      'или в разделе <a href="#" data-goto="settings">Настройки</a>.'
+    banner.querySelectorAll('[data-goto]').forEach(el => {
+      el.addEventListener('click', e => { e.preventDefault(); navigate(el.dataset.goto) })
+    })
+  } catch {
+    banner.classList.add('hidden')
+  }
+}
+
+async function refreshCalendarSettings() {
+  const statusEl = document.getElementById('calendar-settings-status')
+  if (!statusEl || !API_URL) {
+    if (statusEl) statusEl.textContent = API_URL ? 'Загрузка…' : 'Укажите URL бэкенда выше'
+    return
+  }
+  try {
+    const r = await api(`/api/calendar/status?session_id=${encodeURIComponent(SESSION_ID)}`)
+    const st = await r.json()
+    if (!st.configured) {
+      statusEl.textContent = 'Не настроен на сервере (GOOGLE_CLIENT_ID)'
+      return
+    }
+    statusEl.textContent = st.connected ? '✓ Подключён' : 'Не подключён — нажмите «Подключить Google»'
+  } catch (e) {
+    statusEl.textContent = 'Ошибка: ' + e.message
   }
 }
 
@@ -1139,6 +1210,12 @@ async function sendMessage() {
     })
 
     typing.remove()
+
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({ detail: r.statusText }))
+      throw new Error(err.detail || r.statusText)
+    }
+
     const botMsg = addMessage('bot', '')
     const bubble = botMsg.querySelector('.msg-bubble')
     bubble.textContent = ''
@@ -1157,11 +1234,16 @@ async function sendMessage() {
         if (!line.startsWith('data: ')) continue
         try {
           const d = JSON.parse(line.slice(6))
+          if (d.error) throw new Error(d.error)
           if (d.delta) {
             bubble.textContent += d.delta
             messagesEl.scrollTop = messagesEl.scrollHeight
           }
-        } catch {}
+        } catch (parseErr) {
+          if (parseErr instanceof Error && parseErr.message && !line.includes('"delta"')) {
+            throw parseErr
+          }
+        }
       }
     }
   } catch (e) {
@@ -1240,6 +1322,10 @@ document.getElementById('img-upload').addEventListener('change', async e => {
   fd.append('file', file)
   try {
     const r = await fetch(API_URL + '/api/image/analyze', { method: 'POST', body: fd })
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({ detail: r.statusText }))
+      throw new Error(err.detail || r.statusText)
+    }
     const data = await r.json()
     analysisText.textContent = data.description
     toast('Анализ завершён', 'success')
@@ -1571,7 +1657,34 @@ document.getElementById('save-settings-btn').addEventListener('click', () => {
   syncApiUrlInputs()
   updateApiSetupBanner()
   checkApiStatus()
+  refreshCalendarSettings()
+  updateCalendarBanner()
   toast(API_URL ? 'Настройки сохранены' : 'Сброшено на URL из config.js', 'success')
+})
+
+document.getElementById('calendar-connect-btn').addEventListener('click', async () => {
+  SESSION_ID = document.getElementById('settings-session').value || SESSION_ID
+  if (!API_URL) { toast('Укажите URL бэкенда', 'error'); return }
+  try {
+    const r = await api(`/api/calendar/auth-url?session_id=${encodeURIComponent(SESSION_ID)}`)
+    const { auth_url } = await r.json()
+    window.open(auth_url, '_blank', 'noopener')
+    toast('Откройте вкладку Google и завершите вход', 'info')
+  } catch (e) {
+    toast(e.message, 'error')
+  }
+})
+
+document.getElementById('calendar-disconnect-btn').addEventListener('click', async () => {
+  SESSION_ID = document.getElementById('settings-session').value || SESSION_ID
+  try {
+    await api(`/api/calendar/disconnect?session_id=${encodeURIComponent(SESSION_ID)}`, { method: 'POST' })
+    toast('Календарь отключён', 'success')
+    refreshCalendarSettings()
+    updateCalendarBanner()
+  } catch (e) {
+    toast(e.message, 'error')
+  }
 })
 
 document.getElementById('clear-history-btn').addEventListener('click', async () => {

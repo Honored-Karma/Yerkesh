@@ -45,18 +45,8 @@ async def generate_image(req: GenerateRequest):
         f"?width={req.width}&height={req.height}&model={req.model}&nologo=true"
     )
 
-    # Проверяем что Pollinations ответит картинкой (HEAD с увеличенным таймаутом)
-    try:
-        async with httpx.AsyncClient(timeout=90, follow_redirects=True) as client:
-            resp = await client.head(poll_url)
-            ct = resp.headers.get("content-type", "")
-            if resp.status_code >= 400:
-                raise HTTPException(status_code=502, detail=f"Pollinations error: {resp.status_code}")
-            if ct and not ct.startswith("image/"):
-                raise HTTPException(status_code=502, detail=f"Unexpected content type: {ct}")
-    except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail="Pollinations не ответил за 90 секунд")
-
+    # Pollinations часто не поддерживает HEAD или отдаёт не image/* на проверке —
+    # картинка загружается через GET /api/image/proxy при отображении в браузере.
     logger.info("image_generated", prompt=req.prompt[:50])
     # Возвращаем прокси URL — браузер загрузит через наш бэкенд (нет CORS)
     proxy_url = f"/api/image/proxy?url={quote(poll_url, safe='')}"
