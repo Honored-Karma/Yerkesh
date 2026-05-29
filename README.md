@@ -82,7 +82,9 @@ cd backend && pytest tests/ -m "not slow" -v
 
 **Vercel** — фронтенд (`frontend/web/`):
 
-1. Import репозитория в Vercel (корень проекта — подхватится `vercel.json`).
+1. Import репозитория в Vercel.
+   - **Root Directory:** `frontend/web` (рекомендуется) — используется `frontend/web/vercel.json`
+   - или корень репозитория — используется корневой `vercel.json`
 2. **Settings → Environment Variables** → добавьте:
    - `API_URL` = `https://your-app.up.railway.app` (без `/` в конце)
    - для Production, Preview и Development

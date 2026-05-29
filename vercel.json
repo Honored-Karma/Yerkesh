@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "node scripts/generate-web-config.js",
+  "buildCommand": "node frontend/web/scripts/generate-web-config.js",
   "outputDirectory": "frontend/web",
   "installCommand": "",
   "framework": null
