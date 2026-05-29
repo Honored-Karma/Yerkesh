@@ -1,3 +1,3 @@
-from api.routes import agents, calendar, chat, documents, image, tools
+from api.routes import agents, calendar, chat, documents, image, tools, voice
 
-__all__ = ["agents", "calendar", "chat", "documents", "image", "tools"]
+__all__ = ["agents", "calendar", "chat", "documents", "image", "tools", "voice"]

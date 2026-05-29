@@ -187,10 +187,22 @@
   .content {
     flex: 1; overflow-y: auto; padding: 24px;
   }
+  .content.chat-mode {
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding: 16px 24px 12px;
+  }
 
   /* ── Panels (pages) ── */
   .panel { display: none; }
   .panel.active { display: block; animation: fadeIn 0.2s ease; }
+  #panel-chat.active {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
   @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
 
   /* ── Dashboard grid ── */
@@ -256,7 +268,14 @@
   /* ── Chat ── */
   .chat-wrap {
     display: flex; flex-direction: column;
-    height: calc(100vh - 52px - 48px);
+    flex: 1;
+    min-height: 0;
+  }
+  .chat-hint {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 10px;
+    line-height: 1.5;
   }
   .agent-bar {
     display: flex; gap: 8px; flex-wrap: wrap;
@@ -323,7 +342,32 @@
   }
 
   .chat-input-row {
-    display: flex; gap: 10px; align-items: flex-end;
+    display: flex; gap: 8px; align-items: flex-end;
+    flex-shrink: 0;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    background: linear-gradient(to top, var(--bg) 70%, transparent);
+  }
+  .voice-btn {
+    width: 40px; height: 40px; flex-shrink: 0;
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 10px;
+    cursor: pointer; font-size: 18px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+    color: var(--muted);
+  }
+  .voice-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .voice-btn.recording {
+    background: rgba(255,76,106,0.15);
+    border-color: var(--red);
+    color: var(--red);
+    animation: pulse-rec 1s infinite;
+  }
+  @keyframes pulse-rec {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255,76,106,0.4); }
+    50% { box-shadow: 0 0 0 6px rgba(255,76,106,0); }
   }
   .chat-input-wrap {
     flex: 1;
@@ -342,16 +386,21 @@
   }
   .chat-input::placeholder { color: var(--muted); }
   .send-btn {
-    width: 40px; height: 40px; flex-shrink: 0;
+    min-width: 40px; height: 40px; flex-shrink: 0;
+    padding: 0 14px;
     background: var(--accent);
     border: none; border-radius: 10px;
-    cursor: pointer; font-size: 16px;
+    cursor: pointer; font-size: 12px;
+    font-family: var(--font-mono);
+    font-weight: 500;
     display: flex; align-items: center; justify-content: center;
+    gap: 6px;
     transition: all 0.15s;
     color: var(--bg);
   }
-  .send-btn:hover { background: #22e0ff; transform: scale(1.05); }
-  .send-btn:disabled { background: var(--border2); cursor: not-allowed; transform: none; }
+  .send-btn:hover { background: #22e0ff; transform: translateY(-1px); }
+  .send-btn:disabled { background: var(--border2); color: var(--muted); cursor: not-allowed; transform: none; }
+  .send-btn-kbd { font-size: 9px; opacity: 0.75; }
 
   .typing-indicator {
     display: flex; gap: 4px; padding: 4px 0;
@@ -737,21 +786,27 @@
       <!-- ── Chat ── -->
       <div class="panel" id="panel-chat">
         <div id="calendar-banner" class="api-setup-banner hidden" role="status"></div>
+        <div id="voice-banner" class="api-setup-banner hidden" role="status"></div>
         <div class="agent-bar" id="agent-bar">
           <!-- заполняется из /api/agents -->
         </div>
+        <p class="chat-hint" id="chat-hint">Enter — отправить · Shift+Enter — новая строка · 🎙 — голос</p>
         <div class="chat-wrap">
           <div class="messages" id="messages">
             <div class="msg bot">
               <div class="msg-avatar">⬡</div>
-              <div class="msg-bubble">Привет! Я YerkoBot. Выбери агента и начни диалог. Чем могу помочь?</div>
+              <div class="msg-bubble">Привет! Я YerkoBot. Выбери агента и начни диалог. Напиши текст и нажми <strong>Отправить</strong>, или запиши голос кнопкой 🎙.</div>
             </div>
           </div>
           <div class="chat-input-row">
+            <button type="button" class="voice-btn" id="voice-btn" title="Записать голос (удерживай или нажми)">🎙</button>
+            <input type="file" id="voice-file" accept="audio/*,.webm,.wav,.mp3,.m4a,.ogg" style="display:none">
             <div class="chat-input-wrap">
-              <textarea class="chat-input" id="chat-input" rows="1" placeholder="Напиши сообщение... (Enter — отправить, Shift+Enter — перенос)"></textarea>
+              <textarea class="chat-input" id="chat-input" rows="1" placeholder="Напиши сообщение..."></textarea>
             </div>
-            <button class="send-btn" id="send-btn">➤</button>
+            <button type="button" class="send-btn" id="send-btn" title="Отправить (Enter)">
+              Отправить <span class="send-btn-kbd">↵</span>
+            </button>
           </div>
         </div>
       </div>
@@ -973,6 +1028,7 @@ const titles = {
 }
 
 function navigate(id) {
+  document.querySelector('.content')?.classList.toggle('chat-mode', id === 'chat')
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.panel === id)
   })
@@ -986,7 +1042,11 @@ function navigate(id) {
   if (id === 'tools') loadTools()
   if (id === 'dashboard') loadServers()
   if (id === 'settings') refreshCalendarSettings()
-  if (id === 'chat') updateCalendarBanner()
+  if (id === 'chat') {
+    updateCalendarBanner()
+    updateVoiceBanner()
+    chatInput?.focus()
+  }
 }
 
 document.querySelectorAll('.nav-item').forEach(el => {
@@ -1090,9 +1150,11 @@ async function loadAgents() {
         bar.querySelectorAll('.agent-chip').forEach(c => c.classList.remove('selected'))
         el.classList.add('selected')
         updateCalendarBanner()
+        updateVoiceBanner()
       })
     })
     updateCalendarBanner()
+    updateVoiceBanner()
   } catch {
     bar.innerHTML = `<div class="agent-chip selected" data-agent="default">🤖 Основной</div>`
   }
@@ -1156,10 +1218,35 @@ async function refreshCalendarSettings() {
   }
 }
 
+function updateVoiceBanner() {
+  const banner = document.getElementById('voice-banner')
+  const hint = document.getElementById('chat-hint')
+  if (!banner) return
+  if (currentAgent === 'voice') {
+    banner.classList.remove('hidden')
+    banner.innerHTML =
+      '<strong>Режим «Голос».</strong> Нажми 🎙 — запись, ещё раз — стоп. Текст распознается и уйдёт в чат. ' +
+      '<a href="#" id="voice-upload-link">Или загрузить аудиофайл</a>.'
+    document.getElementById('voice-upload-link')?.addEventListener('click', e => {
+      e.preventDefault()
+      voiceFileInput?.click()
+    })
+    if (hint) hint.textContent = '🎙 Запись голоса · Enter — отправить текст'
+  } else {
+    banner.classList.add('hidden')
+    if (hint) hint.textContent = 'Enter — отправить · Shift+Enter — новая строка · 🎙 — голос'
+  }
+}
+
 // ── Chat ───────────────────────────────────────────────────────────────────
 const messagesEl = document.getElementById('messages')
 const chatInput = document.getElementById('chat-input')
 const sendBtn = document.getElementById('send-btn')
+const voiceBtn = document.getElementById('voice-btn')
+const voiceFileInput = document.getElementById('voice-file')
+let mediaRecorder = null
+let voiceChunks = []
+let isRecording = false
 
 function addMessage(role, text) {
   const el = document.createElement('div')
@@ -1271,6 +1358,97 @@ chatInput.addEventListener('keydown', e => {
 chatInput.addEventListener('input', () => {
   chatInput.style.height = 'auto'
   chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px'
+})
+
+async function transcribeVoiceBlob(blob, filename = 'voice.webm') {
+  if (!API_URL) {
+    toast('Укажите URL бэкенда в Настройках', 'error')
+    navigate('settings')
+    return null
+  }
+  const fd = new FormData()
+  fd.append('file', blob, filename)
+  const r = await fetch(API_URL + '/api/voice/transcribe', { method: 'POST', body: fd })
+  const data = await r.json().catch(() => ({}))
+  if (!r.ok) throw new Error(data.detail || r.statusText)
+  return data.text
+}
+
+async function handleVoiceBlob(blob, filename) {
+  voiceBtn.disabled = true
+  voiceBtn.textContent = '⟳'
+  try {
+    const text = await transcribeVoiceBlob(blob, filename)
+    if (!text) return
+    chatInput.value = text
+    chatInput.dispatchEvent(new Event('input'))
+    toast('Распознано — отправляю…', 'info')
+    await sendMessage()
+  } catch (e) {
+    toast(e.message, 'error')
+    addMessage('bot', `⚠ Голос: ${e.message}`)
+  } finally {
+    voiceBtn.disabled = false
+    voiceBtn.textContent = '🎙'
+    voiceBtn.classList.remove('recording')
+    voiceBtn.title = 'Записать голос (нажми для старт/стоп)'
+  }
+}
+
+async function startVoiceRecording() {
+  if (isRecording || isStreaming) return
+  if (!API_URL) {
+    toast('Укажите URL бэкенда в Настройках', 'error')
+    navigate('settings')
+    return
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : (MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '')
+    mediaRecorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream)
+    voiceChunks = []
+    mediaRecorder.ondataavailable = e => { if (e.data.size) voiceChunks.push(e.data) }
+    mediaRecorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop())
+      isRecording = false
+      voiceBtn.classList.remove('recording')
+      const type = mediaRecorder.mimeType || 'audio/webm'
+      const blob = new Blob(voiceChunks, { type })
+      const ext = type.includes('webm') ? 'webm' : 'wav'
+      if (blob.size < 500) {
+        toast('Слишком короткая запись', 'error')
+        return
+      }
+      await handleVoiceBlob(blob, `voice.${ext}`)
+    }
+    mediaRecorder.start()
+    isRecording = true
+    voiceBtn.classList.add('recording')
+    voiceBtn.title = 'Остановить запись'
+    toast('Запись… нажмите 🎙 ещё раз для остановки', 'info')
+  } catch (e) {
+    toast('Нет доступа к микрофону: ' + e.message, 'error')
+  }
+}
+
+function stopVoiceRecording() {
+  if (mediaRecorder && isRecording && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop()
+  }
+}
+
+voiceBtn.addEventListener('click', e => {
+  e.preventDefault()
+  if (isRecording) stopVoiceRecording()
+  else startVoiceRecording()
+})
+voiceFileInput.addEventListener('change', async () => {
+  const file = voiceFileInput.files?.[0]
+  voiceFileInput.value = ''
+  if (!file) return
+  await handleVoiceBlob(file, file.name)
 })
 
 // ── Image Generation ───────────────────────────────────────────────────────

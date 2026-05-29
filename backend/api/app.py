@@ -11,7 +11,7 @@ from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 
-from api.routes import agents, calendar, chat, documents, image, tools
+from api.routes import agents, calendar, chat, documents, image, tools, voice
 from handlers.mcp_handler import mcp_aggregator
 from handlers.setup_mcp import setup_mcp
 from services import context_store, embedding_service, gcal_service, rag_service, rate_limiter, search_service
@@ -62,6 +62,7 @@ app.include_router(calendar.router,  prefix="/api/calendar",  tags=["Calendar"])
 app.include_router(image.router,     prefix="/api/image",     tags=["Image"])
 app.include_router(tools.router,     prefix="/api/tools",     tags=["MCP Tools"])
 app.include_router(documents.router, prefix="/api/documents", tags=["Documents"])
+app.include_router(voice.router,     prefix="/api/voice",     tags=["Voice"])
 
 
 @app.get("/oauth/callback", response_class=HTMLResponse)

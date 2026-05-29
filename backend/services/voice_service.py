@@ -88,8 +88,60 @@ class VoiceService:
         chunks = sorted(Path(tmpdir).glob("chunk_*.wav"))
         return [str(c) for c in chunks]
 
+    async def _transcribe_file(self, audio_path: str) -> str:
+        """Отправить готовый аудиофайл в Groq Whisper."""
+        if os.path.getsize(audio_path) > MAX_FILE_SIZE:
+            chunks = await self._split_audio(audio_path)
+        else:
+            chunks = [audio_path]
+
+        results = []
+        for chunk_path in chunks:
+            with open(chunk_path, "rb") as audio_file:
+                transcription = await self.client.audio.transcriptions.create(
+                    file=audio_file,
+                    model=settings.groq_model_whisper,
+                    response_format="text",
+                    language="ru",
+                )
+            results.append(transcription)
+        return " ".join(results)
+
+    async def transcribe_upload(self, audio_bytes: bytes, suffix: str = ".webm") -> str:
+        """Веб-загрузка: webm/wav/mp3 напрямую в Whisper, ogg — через ffmpeg."""
+        suffix = (suffix or ".webm").lower()
+        if not suffix.startswith("."):
+            suffix = "." + suffix
+
+        direct = {".webm", ".wav", ".mp3", ".m4a", ".mpeg", ".mpga", ".mp4", ".flac"}
+        if suffix in direct:
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
+                f.write(audio_bytes)
+                path = f.name
+            try:
+                return await self._transcribe_file(path)
+            finally:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+
+        if suffix in (".ogg", ".opus"):
+            return await self.transcribe(audio_bytes)
+
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
+            f.write(audio_bytes)
+            path = f.name
+        try:
+            return await self._transcribe_file(path)
+        finally:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+
     async def transcribe(self, ogg_bytes: bytes) -> str:
-        """bytes → wav → Groq Whisper → текст."""
+        """bytes → wav → Groq Whisper → текст (Telegram .ogg)."""
         with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
             f.write(ogg_bytes)
             ogg_path = f.name
@@ -99,23 +151,7 @@ class VoiceService:
         try:
             await self._convert_ogg_to_wav(ogg_path, wav_path)
 
-            if os.path.getsize(wav_path) > MAX_FILE_SIZE:
-                chunks = await self._split_audio(wav_path)
-            else:
-                chunks = [wav_path]
-
-            results = []
-            for chunk_path in chunks:
-                with open(chunk_path, "rb") as audio_file:
-                    transcription = await self.client.audio.transcriptions.create(
-                        file=audio_file,
-                        model=settings.groq_model_whisper,
-                        response_format="text",
-                        language="ru",
-                    )
-                results.append(transcription)
-
-            return " ".join(results)
+            return await self._transcribe_file(wav_path)
 
         except Exception as exc:
             logger.exception("voice_transcription_failed", error=str(exc))
