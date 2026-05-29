@@ -70,3 +70,35 @@ cd backend && pytest tests/ -m "not slow" -v
 
 `frontend/webhook_server.py` автоматически добавляет `backend/` в `sys.path`, поэтому
 все импорты (`config`, `handlers`, `services`, `utils`) работают без изменений.
+
+## Деплой веб-интерфейса (Vercel + Railway API)
+
+**Railway** — бэкенд (REST API):
+
+1. Создайте сервис из репозитория (используется `railway.toml` → `uvicorn api.app:app`).
+2. Добавьте переменные: `BOT_TOKEN`, `GROQ_API_KEY`, `REDIS_URL` (Redis-плагин Railway).
+3. Скопируйте публичный URL, например `https://your-app.up.railway.app`.
+4. Проверьте: `https://your-app.up.railway.app/health` → `{"status":"ok"}`.
+
+**Vercel** — фронтенд (`frontend/web/`):
+
+1. Import репозитория в Vercel (корень проекта — подхватится `vercel.json`).
+2. **Settings → Environment Variables** → добавьте:
+   - `API_URL` = `https://your-app.up.railway.app` (без `/` в конце)
+   - для Production, Preview и Development
+3. Redeploy — при сборке создаётся `frontend/web/config.js` с вашим URL.
+4. Сайт на всех устройствах сразу ходит на Railway (ручная настройка не нужна).
+
+**Локально без Vercel:**
+
+```bash
+# Вариант A: только localhost
+cd frontend/web && python -m http.server 5500
+# откройте http://localhost:5500 — API по умолчанию http://localhost:8000
+
+# Вариант B: указать Railway в config.js
+cp frontend/web/config.example.js frontend/web/config.js
+# отредактируйте DEFAULT_API_URL в config.js
+```
+
+**Переопределение URL в браузере:** Настройки → URL бэкенда (сохраняется в `localStorage` на этом устройстве).

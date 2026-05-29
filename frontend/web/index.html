@@ -592,6 +592,20 @@
   .toast.success { border-color: rgba(0,229,160,0.3); }
   .toast.error { border-color: rgba(255,76,106,0.3); }
 
+  .api-setup-banner {
+    margin: 0 0 16px;
+    padding: 12px 16px;
+    border: 1px solid var(--orange);
+    border-radius: 8px;
+    background: rgba(255, 140, 66, 0.08);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text);
+  }
+  .api-setup-banner.hidden { display: none; }
+  .api-setup-banner strong { color: var(--orange); }
+  .api-setup-banner a { color: var(--accent); cursor: pointer; }
+
   /* ── Scrollbar global ── */
   ::-webkit-scrollbar { width: 5px; height: 5px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -651,12 +665,19 @@
       <span class="topbar-path" id="page-path">/ главная</span>
       <div class="topbar-right">
         <div class="api-url-badge">
-          API: <input type="text" id="api-url-input" value="http://localhost:8000" placeholder="http://localhost:8000">
+          API: <input type="text" id="api-url-input" value="" placeholder="URL Railway API">
         </div>
       </div>
     </div>
 
     <div class="content">
+
+      <div id="api-setup-banner" class="api-setup-banner hidden" role="alert">
+        <strong>Бэкенд не настроен.</strong>
+        Укажите URL Railway в
+        <a href="#" data-goto="settings">Настройках</a>
+        или задайте переменную <code>API_URL</code> в Vercel при деплое.
+      </div>
 
       <!-- ── Dashboard ── -->
       <div class="panel active" id="panel-dashboard">
@@ -848,8 +869,11 @@
         <div style="max-width:500px">
           <div class="form-group">
             <label class="form-label">URL бэкенда (Railway)</label>
-            <input class="form-input" id="settings-api-url" placeholder="https://your-app.railway.app">
-            <div style="font-size:10px; color:var(--muted); margin-top:4px">Или http://localhost:8000 для локальной разработки</div>
+            <input class="form-input" id="settings-api-url" placeholder="https://your-app.up.railway.app">
+            <div style="font-size:10px; color:var(--muted); margin-top:4px">
+              На Vercel URL подставляется из <code>config.js</code> (переменная <code>API_URL</code>).
+              Локально: <code>http://localhost:8000</code> или свой Railway URL.
+            </div>
           </div>
           <div class="form-group">
             <label class="form-label">Session ID</label>
@@ -869,21 +893,63 @@
 
 <div class="toast-container" id="toast-container"></div>
 
+<script src="config.js"></script>
 <script>
+// ── API URL resolution ─────────────────────────────────────────────────────
+function isLocalHost() {
+  const h = location.hostname
+  return h === 'localhost' || h === '127.0.0.1'
+}
+
+function getBuiltInApiUrl() {
+  const fromConfig = (window.DEFAULT_API_URL || '').trim()
+  if (fromConfig) return fromConfig.replace(/\/$/, '')
+  if (isLocalHost()) return 'http://localhost:8000'
+  return ''
+}
+
+function resolveApiUrl() {
+  const stored = (localStorage.getItem('api_url') || '').trim()
+  if (stored) return stored.replace(/\/$/, '')
+  return getBuiltInApiUrl()
+}
+
+function needsApiSetup() {
+  if (!API_URL) return true
+  if (isLocalHost()) return false
+  return API_URL.includes('localhost') || API_URL.includes('127.0.0.1')
+}
+
+function updateApiSetupBanner() {
+  const banner = document.getElementById('api-setup-banner')
+  if (banner) banner.classList.toggle('hidden', !needsApiSetup())
+}
+
+function syncApiUrlInputs() {
+  document.getElementById('api-url-input').value = API_URL
+  document.getElementById('settings-api-url').value = API_URL
+  const builtIn = getBuiltInApiUrl()
+  document.getElementById('settings-api-url').placeholder =
+    builtIn || 'https://your-app.up.railway.app'
+}
+
 // ── State ──────────────────────────────────────────────────────────────────
-let API_URL = localStorage.getItem('api_url') || 'http://localhost:8000'
+let API_URL = resolveApiUrl()
 let SESSION_ID = localStorage.getItem('session_id') || 'web-default'
 let currentAgent = 'default'
 let isStreaming = false
 
 // ── Init ───────────────────────────────────────────────────────────────────
-document.getElementById('api-url-input').value = API_URL
-document.getElementById('settings-api-url').value = API_URL
 document.getElementById('settings-session').value = SESSION_ID
+syncApiUrlInputs()
+updateApiSetupBanner()
 
 document.getElementById('api-url-input').addEventListener('change', e => {
-  API_URL = e.target.value.replace(/\/$/, '')
-  localStorage.setItem('api_url', API_URL)
+  API_URL = e.target.value.trim().replace(/\/$/, '')
+  if (API_URL) localStorage.setItem('api_url', API_URL)
+  else localStorage.removeItem('api_url')
+  syncApiUrlInputs()
+  updateApiSetupBanner()
   checkApiStatus()
 })
 
@@ -921,6 +987,10 @@ document.querySelectorAll('[data-goto]').forEach(el => {
 
 // ── API helpers ────────────────────────────────────────────────────────────
 async function api(path, opts = {}) {
+  if (!API_URL) {
+    updateApiSetupBanner()
+    throw new Error('Укажите URL бэкенда в Настройках')
+  }
   const res = await fetch(API_URL + path, {
     headers: { 'Content-Type': 'application/json', ...opts.headers },
     ...opts,
@@ -946,6 +1016,13 @@ function toast(msg, type = 'info') {
 async function checkApiStatus() {
   const dot = document.getElementById('api-status-dot')
   const txt = document.getElementById('api-status-text')
+  updateApiSetupBanner()
+  if (!API_URL) {
+    dot.style.background = 'var(--orange)'
+    dot.style.boxShadow = 'none'
+    txt.textContent = 'API не настроен'
+    return
+  }
   try {
     const r = await fetch(API_URL + '/health', { signal: AbortSignal.timeout(4000) })
     if (r.ok) {
@@ -1034,6 +1111,12 @@ function addTyping() {
 async function sendMessage() {
   const text = chatInput.value.trim()
   if (!text || isStreaming) return
+  if (!API_URL) {
+    updateApiSetupBanner()
+    toast('Укажите URL бэкенда в Настройках', 'error')
+    navigate('settings')
+    return
+  }
 
   addMessage('user', text)
   chatInput.value = ''
@@ -1479,13 +1562,16 @@ function renderMcpValue(val) {
 
 // ── Settings ───────────────────────────────────────────────────────────────
 document.getElementById('save-settings-btn').addEventListener('click', () => {
-  API_URL = document.getElementById('settings-api-url').value.replace(/\/$/, '') || API_URL
+  const entered = document.getElementById('settings-api-url').value.trim().replace(/\/$/, '')
+  API_URL = entered || getBuiltInApiUrl()
   SESSION_ID = document.getElementById('settings-session').value || SESSION_ID
-  localStorage.setItem('api_url', API_URL)
+  if (entered) localStorage.setItem('api_url', API_URL)
+  else localStorage.removeItem('api_url')
   localStorage.setItem('session_id', SESSION_ID)
-  document.getElementById('api-url-input').value = API_URL
+  syncApiUrlInputs()
+  updateApiSetupBanner()
   checkApiStatus()
-  toast('Настройки сохранены', 'success')
+  toast(API_URL ? 'Настройки сохранены' : 'Сброшено на URL из config.js', 'success')
 })
 
 document.getElementById('clear-history-btn').addEventListener('click', async () => {
