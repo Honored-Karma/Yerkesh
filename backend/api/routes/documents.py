@@ -157,6 +157,8 @@ async def upload_document(file: UploadFile = File(...)):
             )
         ids.append(doc_id)
 
+    await rag_service.rebuild_index_if_needed()
+
     return UploadResponse(
         ok=True,
         doc_id=ids[0] if ids else -1,
@@ -179,9 +181,19 @@ async def ask_documents(req: AskRequest):
         )
 
     docs = await rag_service.search(query_embedding, top_k=req.top_k)
+    doc_count = await rag_service.count()
     if not docs:
+        if doc_count == 0:
+            return AskResponse(
+                answer="Сначала загрузите документ (PDF, TXT или MD).",
+                sources=[],
+                question=req.question,
+            )
         return AskResponse(
-            answer="В загруженных документах не найдено релевантной информации по этому вопросу.",
+            answer=(
+                "Документы есть в базе, но поиск не вернул фрагменты. "
+                "Попробуйте переформулировать вопрос или загрузите файл заново."
+            ),
             sources=[],
             question=req.question,
         )

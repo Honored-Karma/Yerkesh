@@ -46,11 +46,25 @@ class RAGService:
                     embedding vector(768),
                     metadata JSONB DEFAULT '{}'
                 );
-                CREATE INDEX IF NOT EXISTS documents_embedding_idx
-                    ON documents USING ivfflat (embedding vector_cosine_ops)
-                    WITH (lists = 100);
                 """
             )
+            # IVFFlat с lists=100 на пустой/маленькой таблице даёт 0 результатов при поиске.
+            await conn.execute("DROP INDEX IF EXISTS documents_embedding_idx")
+            await self._maybe_create_ivfflat_index(conn)
+
+    async def _maybe_create_ivfflat_index(self, conn) -> None:
+        """Индекс только при достаточном числе строк (иначе — seq scan)."""
+        count = await conn.fetchval("SELECT COUNT(*) FROM documents")
+        if count < 100:
+            return
+        lists = max(1, min(100, count // 100))
+        await conn.execute(
+            f"""
+            CREATE INDEX IF NOT EXISTS documents_embedding_idx
+                ON documents USING ivfflat (embedding vector_cosine_ops)
+                WITH (lists = {lists})
+            """
+        )
 
     async def add_document(
         self,
@@ -77,18 +91,27 @@ class RAGService:
         if not self._pool:
             return []
         async with self._pool.acquire() as conn:
-            rows = await conn.fetch(
-                """
-                SELECT content,
-                       1 - (embedding <=> $1::vector) AS similarity
-                FROM documents
-                ORDER BY embedding <=> $1::vector
-                LIMIT $2
-                """,
-                json.dumps(query_embedding),
-                top_k,
-            )
+            async with conn.transaction():
+                rows = await self._vector_search(conn, query_embedding, top_k)
+                if not rows:
+                    # Сломанный IVFFlat (lists >> rows) отдаёт 0 строк — принудительный seq scan
+                    await conn.execute("SET LOCAL enable_indexscan = off")
+                    rows = await self._vector_search(conn, query_embedding, top_k)
         return [(r["content"], float(r["similarity"])) for r in rows]
+
+    async def _vector_search(self, conn, query_embedding: List[float], top_k: int):
+        return await conn.fetch(
+            """
+            SELECT content,
+                   1 - (embedding <=> $1::vector) AS similarity
+            FROM documents
+            WHERE embedding IS NOT NULL
+            ORDER BY embedding <=> $1::vector
+            LIMIT $2
+            """,
+            json.dumps(query_embedding),
+            top_k,
+        )
 
     async def count(self) -> int:
         if not self._pool:
@@ -121,6 +144,14 @@ class RAGService:
                 ids.append(row["id"])
         logger.info("rag_bulk_insert", count=len(ids))
         return ids
+
+    async def rebuild_index_if_needed(self) -> None:
+        """После bulk-загрузки — пересоздать IVFFlat при достаточном объёме данных."""
+        if not self._pool:
+            return
+        async with self._pool.acquire() as conn:
+            await conn.execute("DROP INDEX IF EXISTS documents_embedding_idx")
+            await self._maybe_create_ivfflat_index(conn)
 
 
 # Singleton
