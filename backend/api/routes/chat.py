@@ -19,7 +19,7 @@ from services.calendar_events import looks_like_calendar_request, try_create_eve
 from services.context_store import context_store
 from services.google_calendar_service import gcal_service
 from services.groq_service import groq_service, TaskType, detect_task_type
-from services.ollama_service import ollama_service
+from services.embedding_service import embedding_service
 from services.rag_service import rag_service
 from services.search_service import search_service
 from utils.logging import get_logger
@@ -84,7 +84,7 @@ async def _build_messages(req: ChatRequest) -> list[dict]:
 
     # RAG-агент: подмешиваем контекст из векторной базы
     if agent == "rag":
-        query_embedding = await ollama_service.embed(req.message)
+        query_embedding = await embedding_service.embed(req.message)
         if query_embedding:
             docs = await rag_service.search(query_embedding, top_k=5)
             if docs:
@@ -99,7 +99,7 @@ async def _build_messages(req: ChatRequest) -> list[dict]:
                 )
         else:
             messages[-1]["content"] += (
-                "\n\n(Сервис эмбеддингов Ollama недоступен — RAG временно не работает.)"
+                "\n\n(Сервис эмбеддингов недоступен — RAG временно не работает.)"
             )
 
     if req.use_search or agent == "search":

@@ -1,5 +1,6 @@
 from .groq_service import groq_service, GroqService, TaskType, detect_task_type
 from .ollama_service import ollama_service
+from .embedding_service import embedding_service
 from .context_store import context_store
 from .rate_limiter import rate_limiter
 from .rag_service import rag_service
@@ -10,6 +11,7 @@ from .google_calendar_service import gcal_service
 __all__ = [
     "groq_service", "GroqService", "TaskType", "detect_task_type",
     "ollama_service",
+    "embedding_service",
     "context_store",
     "rate_limiter",
     "rag_service",

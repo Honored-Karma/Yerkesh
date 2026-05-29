@@ -62,10 +62,17 @@ class OllamaService:
     # Задача 14: Generate embeddings
     # ──────────────────────────────────────────────────────────────────────
     async def embed(
-        self, text: str, model: str = "nomic-embed-text"
+        self,
+        text: str,
+        model: str = "nomic-embed-text",
+        timeout: float = 120.0,
     ) -> List[float]:
         payload = {"model": model, "input": text}
-        data = await self._post("/api/embed", payload)
+        try:
+            data = await self._post("/api/embed", payload, timeout=timeout)
+        except Exception as exc:
+            logger.debug("ollama_embed_request_failed", error=str(exc))
+            return []
         # Ollama returns {"embeddings": [[...]]}
         embeddings = data.get("embeddings", [[]])
         return embeddings[0] if embeddings else []

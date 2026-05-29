@@ -84,7 +84,9 @@ async def cmd_ask(message: Message) -> None:
     await message.answer("🔍 Ищу в базе знаний…")
 
     try:
-        query_embedding = await ollama_service.embed(query)
+        from services.embedding_service import embedding_service
+
+        query_embedding = await embedding_service.embed(query)
         docs = await rag_service.search(query_embedding, top_k=5)
 
         if not docs:

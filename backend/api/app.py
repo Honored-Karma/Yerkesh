@@ -14,7 +14,7 @@ from fastapi.responses import HTMLResponse
 from api.routes import agents, calendar, chat, documents, image, tools
 from handlers.mcp_handler import mcp_aggregator
 from handlers.setup_mcp import setup_mcp
-from services import context_store, gcal_service, rag_service, rate_limiter, search_service
+from services import context_store, embedding_service, gcal_service, rag_service, rate_limiter, search_service
 from utils.logging import setup_logging
 from utils.tracing import setup_tracing
 
@@ -99,4 +99,12 @@ async def oauth_callback(
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    emb = await embedding_service.status()
+    return {
+        "status": "ok",
+        "rag": {
+            "database": rag_service._pool is not None,
+            "embeddings": emb["ready"],
+            "documents": await rag_service.count(),
+        },
+    }

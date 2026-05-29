@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel
 
 from services.rag_service import rag_service
-from services.ollama_service import ollama_service
+from services.embedding_service import embedding_service
 from services.groq_service import groq_service, TaskType
 from utils.logging import get_logger
 
@@ -40,6 +40,29 @@ class UploadResponse(BaseModel):
     doc_id: int
     filename: str
     chunks: int
+
+
+def _require_rag_db() -> None:
+    if not rag_service._pool:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "База документов недоступна: задайте DATABASE_URL (PostgreSQL + pgvector) "
+                "в переменных окружения Railway."
+            ),
+        )
+
+
+async def _require_embeddings() -> None:
+    st = await embedding_service.status()
+    if not st["ready"]:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Сервис эмбеддингов недоступен. Локально: запустите Ollama и "
+                "ollama pull nomic-embed-text. На Railway: установится fastembed при деплое."
+            ),
+        )
 
 
 def _split_text(text: str, chunk_size: int = 500, overlap: int = 50) -> List[str]:
@@ -86,9 +109,23 @@ def _extract_text(content: bytes, filename: str) -> str:
     )
 
 
+@router.get("/status")
+async def documents_status():
+    """Готовность RAG: БД, эмбеддинги, число документов."""
+    emb = await embedding_service.status()
+    return {
+        "database": rag_service._pool is not None,
+        "embeddings": emb,
+        "count": await rag_service.count(),
+    }
+
+
 @router.post("/upload", response_model=UploadResponse)
 async def upload_document(file: UploadFile = File(...)):
     """Загрузить документ, разбить на чанки, сохранить эмбеддинги в pgvector."""
+    _require_rag_db()
+    await _require_embeddings()
+
     content = await file.read()
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
@@ -102,17 +139,22 @@ async def upload_document(file: UploadFile = File(...)):
 
     ids = []
     for i, chunk in enumerate(chunks):
-        embedding = await ollama_service.embed(chunk)
+        embedding = await embedding_service.embed(chunk)
         if not embedding:
             raise HTTPException(
                 status_code=503,
-                detail="Ollama embedding service unavailable. Make sure Ollama is running.",
+                detail="Не удалось построить эмбеддинг для чанка документа.",
             )
         doc_id = await rag_service.add_document(
             content=chunk,
             embedding=embedding,
             metadata={"filename": file.filename, "chunk": i, "total": len(chunks)},
         )
+        if doc_id < 0:
+            raise HTTPException(
+                status_code=503,
+                detail="Не удалось сохранить чанк в базу документов.",
+            )
         ids.append(doc_id)
 
     return UploadResponse(
@@ -126,11 +168,14 @@ async def upload_document(file: UploadFile = File(...)):
 @router.post("/ask", response_model=AskResponse)
 async def ask_documents(req: AskRequest):
     """RAG: найти релевантные чанки и ответить на вопрос через Groq."""
-    query_embedding = await ollama_service.embed(req.question)
+    _require_rag_db()
+    await _require_embeddings()
+
+    query_embedding = await embedding_service.embed(req.question)
     if not query_embedding:
         raise HTTPException(
             status_code=503,
-            detail="Ollama unavailable — cannot generate query embedding.",
+            detail="Сервис эмбеддингов недоступен — не удалось обработать вопрос.",
         )
 
     docs = await rag_service.search(query_embedding, top_k=req.top_k)
