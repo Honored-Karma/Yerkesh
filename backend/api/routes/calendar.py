@@ -18,6 +18,7 @@ class CalendarStatus(BaseModel):
     configured: bool
     session_id: str
     user_id: int
+    redirect_uri: str
 
 
 class AuthUrlResponse(BaseModel):
@@ -36,6 +37,7 @@ async def calendar_status(session_id: str = Query("web-default")):
         configured=configured,
         session_id=session_id,
         user_id=user_id,
+        redirect_uri=gcal_service._redirect_uri(),
     )
 
 

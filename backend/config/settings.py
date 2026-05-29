@@ -67,6 +67,14 @@ class Settings(BaseSettings):
     hf_api_token: Optional[str] = Field(default=None)
     google_client_id: Optional[str] = Field(default=None)
     google_client_secret: Optional[str] = Field(default=None)
+    google_redirect_uri: Optional[str] = Field(
+        default=None,
+        description=(
+            "Полный OAuth redirect URI, например "
+            "https://your-app.up.railway.app/oauth/callback. "
+            "Если не задан — строится из WEBHOOK_HOST."
+        ),
+    )
     fernet_key: Optional[str] = Field(default=None)
 
     # ── Logging / Tracing ─────────────────────────────────────────────────

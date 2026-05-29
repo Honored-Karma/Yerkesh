@@ -68,8 +68,12 @@ class GoogleCalendarService:
         return f"{AUTH_URL}?{urlencode(params)}"
 
     def _redirect_uri(self) -> str:
-        # ИСПРАВЛЕНИЕ 4: rstrip("/") — точное совпадение с Google Console
-        host = (settings.webhook_host or "http://localhost").rstrip("/")
+        """Должен посимвольно совпадать с URI в Google Cloud Console."""
+        if settings.google_redirect_uri:
+            return settings.google_redirect_uri.strip().rstrip("/")
+
+        # WEBHOOK_HOST = публичный URL бэкенда без пути (как в Railway)
+        host = (settings.webhook_host or "http://localhost:8000").rstrip("/")
         return f"{host}/oauth/callback"
 
     async def exchange_code(self, user_id: int, code: str) -> bool:
