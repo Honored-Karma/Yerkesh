@@ -1,4 +1,4 @@
-# PracticeYerko — Telegram Bot
+# Yerko — Telegram Bot
 
 ## Структура проекта
 
